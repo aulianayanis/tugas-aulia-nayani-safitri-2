@@ -1,0 +1,602 @@
+<!doctype html>
+<html lang="id">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Kalkulator Ilmiah Fungsional (Auto-Kurung)</title>
+    <style>
+        :root{
+            /* Warna Dasar */
+            --bg:#0f1724; 
+            --panel:#0b1220; 
+            --text-primary:#e6eef8; 
+            --text-secondary:#94a3b8; 
+            
+            /* Warna Tombol Kustom */
+            --key-default-bg: rgba(255,255,255,0.08);
+            --key-special-bg: #f97316; /* Orange untuk Equal */
+            --key-accent-color: #f97316; /* Warna Oranye untuk Teks Mode Aktif */
+            --key-clear-color: #dc2626; /* Warna Merah untuk AC */
+            --key-color: #e6eef8;
+            --button-size: 58px;
+        }
+        *{box-sizing:border-box}
+        html,body{height:100%;margin:0;font-family:Inter,ui-sans-serif,system-ui,-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial}
+        body{background:linear-gradient(180deg,#071027 0%, #081023 100%);color:var(--text-primary);display:flex;align-items:center;justify-content:center;padding:24px}
+        
+        .card{
+            width:min(980px,100%);
+            display:grid;
+            grid-template-columns:380px 1fr;
+            gap:20px;
+            background:var(--panel);
+            padding:20px;
+            border-radius:14px;
+            box-shadow:0 10px 30px rgba(2,6,23,0.6);
+        }
+        .left{
+            background:linear-gradient(180deg, rgba(255,255,255,0.02), transparent);
+            padding:18px;
+            border-radius:10px;
+        }
+        /* Layar */
+        .screen{
+            background:transparent;
+            padding:15px 5px;
+            display:flex;
+            flex-direction:column;
+            gap:8px;
+            margin-bottom: 12px;
+        }
+        /* Menggunakan input untuk ekspresi agar bisa mengatur posisi kursor */
+        .display{
+            background:transparent;
+            border:none;
+            color:var(--text-secondary);
+            font-size:16px;
+            padding:0;
+            text-align:right;
+            min-height:22px;
+            /* Pastikan input tidak bisa fokus, karena kita handle input via tombol */
+            user-select: none; 
+            pointer-events: none;
+        }
+        .result{
+            background:transparent;
+            border:none;
+            color:var(--text-primary);
+            font-size:40px;
+            font-weight:300;
+            padding:0;
+            text-align:right;
+            line-height: 1;
+        }
+        
+        /* Layout Grid Tombol Utama (6 Kolom x 6 Baris) */
+        .keys{
+            display:grid;
+            grid-template-columns:repeat(6,1fr);
+            grid-auto-rows: var(--button-size);
+            gap: 12px;
+        }
+        
+        /* Gaya Tombol Umum (Bulat) */
+        button.key{
+            padding:0;
+            border-radius:50%;
+            border:none;
+            background:var(--key-default-bg);
+            color:var(--key-color);
+            font-size:16px;
+            cursor:pointer;
+            transition: background 0.1s;
+            line-height: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            width: 100%;
+        }
+        button.key:hover{ filter: brightness(1.4); }
+        
+        button.key.operator, button.key.utility, button.key.function{ font-size: 18px; font-weight: 300; }
+
+        /* Tombol Mode RAD/DEG */
+        #btn-deg.angle-active{ color: var(--key-accent-color); } /* Default: Deg active */
+
+        /* Tombol C/AC - Merah */
+        #btn-clear{ color: var(--key-clear-color); }
+
+        /* Tombol Equal - Oranye Khas */
+        #btn-eval{
+            grid-column: 6 / 7; 
+            grid-row: 6 / 7;
+            background: var(--key-special-bg);
+            border-radius: 50%; 
+            color: white;
+            font-size: 24px;
+        }
+        
+        /* Pengaturan Tombol Khusus (Memastikan Posisi Sesuai Gambar) */
+        .keys button[data-val="00"]{ grid-column: 2 / 3; border-radius: 50%; }
+        .keys button[data-val="0"]{ grid-column: 3 / 4; border-radius: 50%; }
+        .keys button[data-val="."]{ grid-column: 4 / 5; border-radius: 50%; } 
+        .keys button[data-val="Math.E"]{ grid-column: 1 / 2; border-radius: 50%; }
+
+        /* Operator + (Baris 5, Kolom 6) */
+        .keys button[data-val="+"] { 
+            grid-row: 5; 
+            grid-column: 6; 
+            background: var(--key-default-bg); 
+        }
+        
+        /* History & Controls */
+        .right{
+            display:flex;
+            flex-direction:column;
+            gap:12px;
+            padding:12px;
+            border-radius:10px;
+            background:linear-gradient(180deg, rgba(255,255,255,0.015), transparent);
+        }
+        .history{flex:1;overflow-y:auto;padding:8px;border-radius:8px;background:rgba(255,255,255,0.02)}
+        .hist-item{padding:8px;border-radius:8px;display:flex;justify-content:space-between;gap:8px;align-items:center;margin-bottom:8px;background:rgba(255,255,255,0.01);cursor:pointer;}
+        .hist-item:hover{background:rgba(255,255,255,0.03);}
+        .small{font-size:13px;color:var(--text-secondary)}
+        .btn{padding:8px 10px;border-radius:8px;border:none;background:rgba(255,255,255,0.03);color:inherit;cursor:pointer;font-size:14px;}
+        .btn.danger{background:rgba(220,38,38,0.9);color:white}
+        .muted{color:var(--text-secondary)}
+        footer{font-size:11px;text-align:center;color:var(--text-secondary);margin-top:10px}
+        @media (max-width:900px){
+            .card{grid-template-columns:1fr;}.right{order:-1;height:260px}
+        }
+    </style>
+</head>
+<body>
+    <div class="card" role="application" aria-label="Kalkulator ilmiah dengan history">
+        <div class="left">
+            <div class="screen" aria-live="polite">
+                <input id="expr" class="display" placeholder="0" value="" aria-label="Ekspresi" />
+                <div id="result" class="result" aria-label="Hasil">0</div>
+            </div>
+
+            <div class="keys" role="group" aria-label="Tombol kalkulator">
+                <button class="key function" data-val="sin" data-type="func">sin</button>
+                <button class="key function" data-val="cos" data-type="func">cos</button>
+                <button class="key function" data-val="tan" data-type="func">tan</button>
+                <button class="key utility angle-mode" id="btn-rad" data-mode="rad">rad</button>
+                <button class="key utility angle-mode angle-active" id="btn-deg" data-mode="deg">deg</button>
+                <button class="key function" data-val="inv">inv</button>
+                
+                <button class="key function" data-val="log" data-type="func">log</button>
+                <button class="key function" data-val="ln" data-type="func">ln</button>
+                <button class="key utility" data-val="(">(</button>
+                <button class="key utility" data-val=")">)</button>
+                <button class="key function" data-val="exp" data-type="func">e^x</button>
+                <button class="key function" data-val="10**" data-type="func-pow">10^x</button>
+                
+                <button class="key function" data-val="!">!</button>
+                <button class="key utility" id="btn-clear">AC</button>
+                <button class="key utility" data-val="%">%</button>
+                <button class="key utility" id="btn-back">⌫</button>
+                <button class="key operator" data-val="/">÷</button>
+                <button class="key operator" data-val="**">^</button>
+
+                <button class="key operator" data-val="**">^</button> 
+                <button class="key" data-val="7">7</button>
+                <button class="key" data-val="8">8</button>
+                <button class="key" data-val="9">9</button>
+                <button class="key operator" data-val="*">×</button>
+                <button class="key function" data-val="sqrt" data-type="func">√</button>
+
+                <button class="key function" data-val="sqrt" data-type="func">√</button>
+                <button class="key" data-val="4">4</button>
+                <button class="key" data-val="5">5</button>
+                <button class="key" data-val="6">6</button>
+                <button class="key operator" data-val="-">−</button>
+                <button class="key operator" data-val="+">+</button> 
+
+                <button class="key function" data-val="Math.PI">π</button>
+                <button class="key" data-val="1">1</button>
+                <button class="key" data-val="2">2</button>
+                <button class="key" data-val="3">3</button>
+                
+                <button class="key" style="visibility: hidden;"></button> 
+
+                <button class="key function" data-val="Math.E">e</button>
+                <button class="key" data-val="00">00</button>
+                <button class="key" data-val="0">0</button>
+                <button class="key" data-val=".">,</button>
+                
+                <button class="key" style="visibility: hidden;"></button> 
+                
+                <button class="key equal" id="btn-eval">=</button>
+                
+                <button class="key" style="visibility: hidden;"></button>
+            </div>
+
+            <div style="margin-top:16px;display:flex;justify-content:space-between;align-items:center">
+                <div class="small muted">Gunakan keyboard: angka, + - * / ( ) . Enter= =</div>
+                <div class="controls">
+                    <button class="btn" id="btn-copy">Salin Hasil</button>
+                    <button class="btn" id="btn-save">Simpan Sekarang</button>
+                </div>
+            </div>
+            <footer>History disimpan di <code>localStorage</code>. Maks 100 entri.</footer>
+        </div>
+
+        <div class="right">
+            <div style="display:flex;justify-content:space-between;align-items:center">
+                <h3 style="margin:0">History</h3>
+                <div>
+                    <button class="btn" id="btn-export">Export</button>
+                    <button class="btn danger" id="btn-clear-all">Hapus Semua</button>
+                </div>
+            </div>
+
+            <div class="history" id="history"></div>
+
+            <div style="display:flex;justify-content:space-between;align-items:center">
+                <div class="small muted">Klik sebuah entri untuk memasukkannya kembali ke layar.</div>
+                <div class="small muted">Terakhir: <span id="last-saved">-</span></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        (function(){
+            const exprEl = document.getElementById('expr');
+            const resultEl = document.getElementById('result');
+            const btnRad = document.getElementById('btn-rad');
+            const btnDeg = document.getElementById('btn-deg');
+            const historyEl = document.getElementById('history');
+            const lastSavedEl = document.getElementById('last-saved');
+            
+            const LS_KEY = 'calc_history_v1';
+            const MAX_HISTORY = 100;
+
+            let current = '';
+            let angleMode = 'deg'; // Default ke DEGREE
+            let cursorPosition = 0; // Posisi kursor/insert
+
+            // --- Core Logic ---
+
+            function insertAtCursor(str) {
+                const start = cursorPosition;
+                const end = cursorPosition;
+                
+                current = current.substring(0, start) + str + current.substring(end);
+                cursorPosition = start + str.length;
+            }
+
+            function updateScreen(){
+                // 1. Update nilai input
+                exprEl.value = current.replace(/\\/g, '^').replace(/\*/g, '×').replace(/\//g, '÷').replace(/-/g, '−') || '0';
+                
+                // 2. Atur posisi kursor di elemen input
+                // Keterangan: ini hanya berfungsi saat elemen adalah input text
+                exprEl.selectionStart = cursorPosition;
+                exprEl.selectionEnd = cursorPosition;
+
+                // 3. Update tampilan mode sudut
+                document.querySelectorAll('.angle-mode').forEach(btn => btn.classList.remove('angle-active'));
+                if (angleMode === 'rad') {
+                    btnRad.classList.add('angle-active');
+                } else {
+                    btnDeg.classList.add('angle-active');
+                }
+                
+                // 4. Hitung hasil sementara
+                try{
+                    if(current.trim()===''){
+                        resultEl.textContent = '0';
+                        return;
+                    }
+                    const r = safeEval(current);
+                    resultEl.textContent = r;
+                }catch(e){
+                    resultEl.textContent = 'Error';
+                }
+            }
+
+            // [Fungsi safeEval dan Fungsi History Lainnya tetap sama seperti versi sebelumnya]
+            // Disederhanakan untuk kemudahan membaca, diasumsikan fungsi-fungsi ini ada dan benar.
+            
+            // --- Logic Utilities (Faktorial, safeEval) ---
+            
+            function factorial(n) {
+                if (n < 0 || !Number.isInteger(n)) return NaN;
+                if (n === 0) return 1;
+                let result = 1;
+                for (let i = 2; i <= n; i++) {
+                    result *= i;
+                }
+                return result;
+            }
+
+            function safeEval(expression){
+                let sanitized = expression.replace(/×/g, '*')
+                                         .replace(/÷/g, '/')
+                                         .replace(/−/g, '-') 
+                                         .replace(/,/g, '.') 
+                                         .replace(/Math\.PI/g, Math.PI)
+                                         .replace(/Math\.E/g, Math.E);
+                
+                sanitized = sanitized.replace(/(\d+)\!/g, (match, num) => factorial(${num}));
+
+                sanitized = sanitized.replace(/sqrt\(/g, 'Math.sqrt(');
+                sanitized = sanitized.replace(/ln\(/g, 'Math.log(');
+                sanitized = sanitized.replace(/log\(/g, 'Math.log10(');
+                sanitized = sanitized.replace(/exp\(/g, 'Math.exp(');
+                sanitized = sanitized.replace(/10\\/g, 'Math.pow(10,');
+                
+                // Penanganan Mode Sudut
+                if (angleMode === 'deg') {
+                    const degWrap = (fn) => (match, p1) => {
+                        try {
+                            const angle = safeEval(p1);
+                            return Math.${fn}(${angle} * (Math.PI / 180));
+                        } catch (e) {
+                            return Math.${fn}((${p1}) * (Math.PI / 180));
+                        }
+                    };
+                    sanitized = sanitized.replace(/sin\(([^)]+)\)/g, degWrap('sin'));
+                    sanitized = sanitized.replace(/cos\(([^)]+)\)/g, degWrap('cos'));
+                    sanitized = sanitized.replace(/tan\(([^)]+)\)/g, degWrap('tan'));
+                } else {
+                    sanitized = sanitized.replace(/sin\(/g, 'Math.sin(');
+                    sanitized = sanitized.replace(/cos\(/g, 'Math.cos(');
+                    sanitized = sanitized.replace(/tan\(/g, 'Math.tan(');
+                }
+                
+                sanitized = sanitized.replace(/(\d+)%/g, (match, num) => (${num}/100));
+                sanitized = sanitized.replace(/%/g, '/100'); 
+
+                const customScope = { Math, factorial: factorial };
+                const scopeKeys = Object.keys(customScope);
+                const scopeValues = Object.values(customScope);
+                
+                try {
+                    const fn = new Function(...scopeKeys, 'return (' + sanitized + ')');
+                    const res = fn(...scopeValues);
+                    
+                    if(typeof res !== 'number' || !Number.isFinite(res)) throw new Error('Invalid Result');
+                    
+                    return parseFloat(res.toFixed(12)); 
+                } catch (e) {
+                    throw new Error('Ekspresi tidak valid.');
+                }
+            }
+            
+            // --- History Functions ---
+
+            function loadHistory(){
+                try{
+                    const raw = localStorage.getItem(LS_KEY);
+                    const arr = raw ? JSON.parse(raw) : [];
+                    return Array.isArray(arr) ? arr : [];
+                }catch(e){ return []; }
+            }
+
+            function saveHistory(history){
+                localStorage.setItem(LS_KEY, JSON.stringify(history.slice(0, MAX_HISTORY)));
+            }
+
+            function addHistory(expr, res){
+                if(expr.trim()==='') return;
+                const history = loadHistory();
+                const displayExpr = expr.replace(/\\/g, '^').replace(/\*/g, '×').replace(/\//g, '÷').replace(/-/g, '−');
+                const item = {expr:displayExpr, result:res, ts: Date.now()};
+                history.unshift(item);
+                saveHistory(history);
+                renderHistory();
+            }
+
+            function renderHistory(){
+                const history = loadHistory();
+                historyEl.innerHTML = '';
+                if(history.length===0){
+                    historyEl.innerHTML = '<div class="muted">Belum ada riwayat.</div>';
+                    lastSavedEl.textContent = '-';
+                    return;
+                }
+                history.forEach((h, idx)=>{
+                    const el = document.createElement('div');
+                    el.className = 'hist-item';
+                    el.addEventListener('click', ()=>{ 
+                        // Konversi kembali ke format JS untuk ekspresi saat ini
+                        current = h.expr.replace(/\^/g, '*').replace(/×/g, '').replace(/÷/g, '/').replace(/−/g, '-'); 
+                        cursorPosition = current.length; // Pindah kursor ke akhir
+                        updateScreen(); 
+                    });
+
+                    const left = document.createElement('div'); left.style.flex = '1';
+                    const expr = document.createElement('div'); expr.className='expr'; expr.textContent = h.expr;
+                    const ts = document.createElement('div'); ts.className='small muted'; ts.textContent = new Date(h.ts).toLocaleString();
+                    left.appendChild(expr); left.appendChild(ts);
+                    const right = document.createElement('div'); right.style.textAlign='right';
+                    const res = document.createElement('div'); res.className='res'; res.textContent = h.result;
+                    const delBtn = document.createElement('button'); delBtn.className='btn'; delBtn.textContent='Hapus';
+                    delBtn.addEventListener('click', (e)=>{
+                        e.stopPropagation(); 
+                        const arr = loadHistory(); arr.splice(idx,1); saveHistory(arr); renderHistory();
+                    });
+                    right.appendChild(res); right.appendChild(delBtn);
+                    el.appendChild(left); el.appendChild(right);
+                    historyEl.appendChild(el);
+                });
+                lastSavedEl.textContent = new Date(history[0].ts).toLocaleString();
+            }
+            
+            // --- Event Listeners ---
+            
+            // Tangkap klik pada layar untuk mengatur posisi kursor
+            exprEl.addEventListener('click', (e) => {
+                cursorPosition = e.target.selectionStart;
+            });
+
+            document.querySelectorAll('button.key[data-val]').forEach(btn=>{
+                btn.addEventListener('click', ()=>{
+                    let val = btn.dataset.val;
+                    const type = btn.dataset.type;
+
+                    if (val === 'inv') { return; }
+                    
+                    // --- Logika Input Fungsi Otomatis (sin(), log(), sqrt()) ---
+                    if (type === 'func') {
+                        // Tambahkan fungsi() dengan kursor di tengah
+                        insertAtCursor(val + '()');
+                        cursorPosition--; // Pindah kursor ke dalam kurung
+                    } else if (type === 'func-pow') {
+                        // Untuk 10^x
+                        insertAtCursor(val + '(');
+                    } 
+                    // --- Logika Konstanta (e, π) ---
+                    else if (val === 'Math.PI' || val === 'Math.E') {
+                        const lastChar = current.substring(cursorPosition - 1, cursorPosition);
+                        const isOperator = (c) => ['', '/', '-', '+', '*', '!', '%', '(', ''].includes(c); // Termasuk string kosong jika di awal
+                        
+                        // Jika sebelumnya angka/kurung tutup, tambahkan operator kali implisit
+                        if (!isOperator(lastChar)) {
+                            insertAtCursor('*' + val);
+                        } else {
+                            insertAtCursor(val);
+                        }
+                    }
+                    // --- Logika Operator/Angka/Titik ---
+                    else {
+                        const lastChar = current.substring(cursorPosition - 1, cursorPosition);
+                        const isOperator = (c) => ['', '/', '-', '+', '*', '!', '%', '.'].includes(c);
+                        
+                        // Menangani penimpaan operator
+                        if (isOperator(lastChar) && isOperator(val) && val !== '.') {
+                            // Hapus karakter terakhir, lalu masukkan yang baru
+                            current = current.substring(0, cursorPosition - lastChar.length) + current.substring(cursorPosition);
+                            cursorPosition -= lastChar.length;
+                        }
+                        insertAtCursor(val);
+                    }
+                    
+                    updateScreen();
+                });
+            });
+
+            btnRad.addEventListener('click', () => { angleMode = 'rad'; updateScreen(); });
+            btnDeg.addEventListener('click', () => { angleMode = 'deg'; updateScreen(); });
+
+            document.getElementById('btn-clear').addEventListener('click', ()=>{ 
+                current=''; 
+                cursorPosition = 0;
+                updateScreen(); 
+            });
+            
+            document.getElementById('btn-back').addEventListener('click', ()=>{ 
+                if (cursorPosition > 0) {
+                    const beforeCursor = current.substring(0, cursorPosition);
+                    
+                    // Cek apakah menghapus fungsi lengkap (sin(, log(, 10**)
+                    const funcMatch = beforeCursor.match(/(sin\(|cos\(|tan\(|log\(|ln\(|exp\(|sqrt\(|10\\)$/);
+                    
+                    if (funcMatch) {
+                        const funcLen = funcMatch[0].length;
+                        current = current.substring(0, cursorPosition - funcLen) + current.substring(cursorPosition);
+                        cursorPosition -= funcLen;
+                    } else {
+                        // Hapus karakter tunggal
+                        current = current.substring(0, cursorPosition - 1) + current.substring(cursorPosition);
+                        cursorPosition--;
+                    }
+                    updateScreen(); 
+                }
+            });
+            
+            document.getElementById('btn-eval').addEventListener('click', ()=>{
+                try{
+                    const r = safeEval(current);
+                    resultEl.textContent = r;
+                    addHistory(current, r);
+                    current = String(r);
+                    cursorPosition = current.length;
+                    updateScreen();
+                }catch(e){
+                    resultEl.textContent = 'Error';
+                }
+            });
+            
+            // Keyboard support 
+            window.addEventListener('keydown', (ev)=>{
+                const k = ev.key;
+                let buttonToClick = null;
+
+                if (k === 'ArrowLeft' || k === 'ArrowRight' || k === 'Home' || k === 'End') {
+                    // Biarkan browser menangani pergerakan kursor
+                    // Setelah pergerakan, ambil posisi kursor baru
+                    setTimeout(() => { cursorPosition = exprEl.selectionStart; }, 0);
+                    return;
+                }
+
+                if (k === 'Backspace') { ev.preventDefault(); document.getElementById('btn-back').click(); return; }
+                if (k === 'Enter' || k === '=') { ev.preventDefault(); document.getElementById('btn-eval').click(); return; }
+                if (k.toLowerCase() === 'c' && (ev.ctrlKey || ev.metaKey)) { ev.preventDefault(); document.getElementById('btn-clear').click(); return; }
+                
+                // Cari tombol yang sesuai untuk keyboard
+                const keyMap = {
+                    '0': '0', '1': '1', '2': '2', '3': '3', '4': '4', '5': '5', '6': '6', '7': '7', '8': '8', '9': '9',
+                    '(': '(', ')': ')', '.': '.', ',': '.', // Koma atau titik menjadi '.'
+                    '': '', '/': '/', '-': '-', '+': '+', '^': '**', '!': '!', '%': '%',
+                };
+                
+                let valToFind = keyMap[k];
+                if (!valToFind) return;
+
+                // Temukan dan klik tombol
+                buttonToClick = document.querySelector(button.key[data-val="${valToFind}"]);
+                
+                // Pengecualian: sin/cos/dll. tidak ada di keyMap tapi mungkin ditekan (tdk mungkin via keyboard standar)
+                if (buttonToClick) {
+                    ev.preventDefault();
+                    buttonToClick.click();
+                }
+            });
+
+
+            // initialize
+            renderHistory(); 
+            updateScreen(); 
+            
+            // Tambahkan event listener untuk Salin Hasil
+            document.getElementById('btn-copy').addEventListener('click', () => {
+                const resultText = resultEl.textContent;
+                navigator.clipboard.writeText(resultText).then(() => {
+                    alert('Hasil "' + resultText + '" telah disalin!');
+                }).catch(err => {
+                    console.error('Gagal menyalin: ', err);
+                });
+            });
+
+            // Tambahkan event listener untuk Simpan Sekarang
+            document.getElementById('btn-save').addEventListener('click', () => {
+                const expr = exprEl.value;
+                const result = resultEl.textContent;
+                if (result !== '0' && result !== 'Error' && expr !== '0') {
+                    addHistory(current, result);
+                    alert('Ekspresi telah disimpan ke riwayat.');
+                } else {
+                    alert('Tidak ada ekspresi valid untuk disimpan.');
+                }
+            });
+
+            // Tambahkan event listener untuk Hapus Semua Riwayat
+            document.getElementById('btn-clear-all').addEventListener('click', () => {
+                if(confirm("Apakah Anda yakin ingin menghapus SEMUA riwayat? Tindakan ini tidak dapat dibatalkan.")){
+                    saveHistory([]);
+                    renderHistory();
+                    alert('Riwayat telah dihapus.');
+                }
+            });
+
+
+        })();
+    </script>
+</body>
+</html>
